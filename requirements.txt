@@ -1,0 +1,5 @@
+streamlit
+st_audiorec
+requests
+python-dotenv
+google-generativeai

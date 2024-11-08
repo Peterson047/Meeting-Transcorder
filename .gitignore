@@ -1,0 +1,20 @@
+# Ignorar o diretório de ambiente virtual
+venv/
+
+# Ignorar outros arquivos comuns que não devem ser comitados
+__pycache__/
+*.pyc
+*.pyo
+
+# Ignorar arquivos de configuração do sistema
+.env
+.DS_Store
+
+# Ignorar configurações específicas do VS Code (caso você use este editor)
+.vscode/
+
+# Ignorar arquivos de logs
+*.log
+
+# Ignorar cache do Streamlit
+.streamlit/
