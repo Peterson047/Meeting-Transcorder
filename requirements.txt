@@ -1,5 +1,5 @@
-streamlit
-st_audiorec
-requests
-python-dotenv
-google-generativeai
+streamlit==1.26.0
+st-audiorec==1.0.3
+requests==2.31.0
+python-dotenv==1.0.0
+groq==0.2.0

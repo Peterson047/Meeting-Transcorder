@@ -4,64 +4,25 @@ import requests
 import os
 from dotenv import load_dotenv
 import tempfile
-import google.generativeai as genai
-import time
-from threading import Thread
+from groq import Groq
 
 # Carregar variáveis de ambiente do arquivo .env
 load_dotenv()
 
-# Obter chaves de API
+# Obter chave de API da Groq
 GROQ_API_KEY = os.getenv('GROQ_API_KEY')
-GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')  # Substitua conforme a API usada para o Gemini
 
-# Verifique se as chaves de API estão definidas
+# Verificar se a chave de API está definida
 if not GROQ_API_KEY:
     st.error("A chave da API da Groq não está definida no arquivo .env.")
-if not GEMINI_API_KEY:
-    st.error("A chave da API do Gemini não está definida no arquivo .env.")
 
-# Configurar o layout da página para centralizar o conteúdo
+# Configurar o layout da página
 st.set_page_config(
     page_title="🎤 Gravador de Voz com Transcrição e Relatório",
     page_icon="🎤",
-    layout="centered",
+    layout="wide",
     initial_sidebar_state="collapsed",
 )
-
-# Adicionar estilo CSS personalizado para melhorar a aparência
-# Adicionar estilo CSS personalizado para centralizar elementos
-st.markdown(
-    """
-    
-    """,
-    unsafe_allow_html=True
-)
-
-
-
-# Função para iniciar o contador de tempo
-def start_timer(container, stop_event):
-    start_time = time.time()
-    while not stop_event.is_set():
-        elapsed_time = int(time.time() - start_time)
-        mins, secs = divmod(elapsed_time, 60)
-        time_str = f"{mins:02d}:{secs:02d}"
-        container.metric("⏱ Tempo de Gravação", time_str)
-        time.sleep(1)
-
-
-# Função para gravar áudio e contar o tempo
-def record_audio():
-    stop_event = st.session_state.get('stop_event', None)
-    if stop_event:
-        stop_event.set()
-    # Reiniciar a sessão de estado
-    st.session_state['stop_event'] = stop_event = st.session_state.get('stop_event', Thread())
-
-    audio_data = st_audiorec()
-    return audio_data
-
 
 # Função para transcrever áudio
 def transcribe_audio(audio_path):
@@ -95,73 +56,61 @@ def transcribe_audio(audio_path):
         st.error(f"Erro ao transcrever o áudio: {e}")
         return ""
 
-
-# Função para gerar relatório com Gemini
+# Função para gerar relatório com a API da Groq
 def generate_report(transcription_text):
     try:
-        genai.configure(api_key=os.environ["GEMINI_API_KEY"])
+        # Inicialize o cliente Groq com a chave de API
+        client = Groq(api_key=GROQ_API_KEY)
     except Exception as e:
-        st.error(f"Erro ao configurar a API do Gemini: {e}")
+        st.error(f"Erro ao configurar a API da Groq: {e}")
         return ""
 
     try:
-        model = genai.GenerativeModel(model_name="gemini-1.5-flash")
-    except Exception as e:
-        st.error(f"Erro ao inicializar o modelo Gemini: {e}")
-        return ""
-
-    try:
-        response = model.generate_content(
-            f"Você gera relatórios de reuniões, destaca os pontos importantes debatidos e etc. Por favor, gere um relatório detalhado baseado no seguinte texto transcrito em Português: {transcription_text}"
+        response = client.chat.completions.create(
+            messages=[
+                {
+                    "role": "user",
+                    "content": f"Você é um assistente que gera relatórios detalhados com base em transcrições de reuniões. Por favor, crie um relatório a partir do seguinte texto transcrito em Português: {transcription_text}"
+                }
+            ],
+            model="llama3-8b-8192"
         )
-        report = response.text
+
+        report = response.choices[0].message.content
         return report
     except Exception as e:
-        st.error(f"Erro ao gerar o relatório com o Gemini: {e}")
+        st.error(f"Erro ao gerar o relatório com a Groq: {e}")
         return ""
 
-
-# Função para estilizar a interface usando container centralizado
+# Função principal
 def main():
-    with st.container():
-        st.title("🎤 Meeting Transcorder")
-        st.write("Grave seu áudio, transcreva-o e gere um relatório automaticamente.")
+    # Centralizar título e subtítulo
+    st.markdown("<h1 style='text-align: center;'>🎤 Meeting Transcorder</h1>", unsafe_allow_html=True)
+    st.markdown("<h3 style='text-align: center;'>Grave seu áudio, transcreva-o e gere um relatório automaticamente.</h3>", unsafe_allow_html=True)
 
-        # Container para o contador de tempo
-        timer_container = st.empty()
-        stop_event = st.session_state.get('stop_event', None)
+    # Adicionar linhas para delimitar os containers
+    st.markdown("---")
+    col1, col2 = st.columns([1, 1])
+    st.markdown("---")
 
-        # Exibir o componente de gravação de áudio
-        wav_audio_data = st_audiorec()
+    # Coluna da esquerda: gravação e transcrição
+    with col1:
+        st.header("📼 Gravação e Transcrição")
 
-        # Verificar se o áudio foi gravado
-        if wav_audio_data is not None:
-            # Iniciar o contador de tempo
-            stop_event = st.session_state.get('stop_event', None)
-            if not stop_event:
-                st.session_state['stop_event'] = stop_event = Thread()
-                stop_event.start()
+        # Botão de envio de arquivo de áudio
+        uploaded_audio_file = st.file_uploader("Envie um arquivo de áudio", type=["wav", "mp3", "m4a"])
 
-            # Reproduzir o áudio gravado
-            st.audio(wav_audio_data, format='audio/wav')
-
-            # Adicionar botão para baixar o áudio
-            st.download_button(
-                label="📥 Baixar Áudio",
-                data=wav_audio_data,
-                file_name="gravacao.wav",
-                mime="audio/wav",
-                key="download-audio"
-            )
+        if uploaded_audio_file is not None:
+            # Reproduzir o áudio enviado
+            st.audio(uploaded_audio_file, format="audio/wav")
 
             # Salvar o áudio em um arquivo temporário
             with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as temp_audio_file:
-                temp_audio_file.write(wav_audio_data)
+                temp_audio_file.write(uploaded_audio_file.read())
                 temp_audio_path = temp_audio_file.name
 
+            # Transcrever e mostrar a transcrição automaticamente
             st.write("Enviando áudio para transcrição...")
-
-            # Enviar o áudio para a API da Groq para transcrição
             transcription_text = transcribe_audio(temp_audio_path)
 
             if transcription_text:
@@ -186,29 +135,63 @@ def main():
                         "Não foi possível remover o arquivo temporário. Por favor, feche qualquer programa que possa estar usando o arquivo e tente novamente."
                     )
 
-                st.write("Gerando relatório a partir da transcrição...")
+        # Gravação de áudio
+        st.write("Ou, grave um novo áudio abaixo:")
+        wav_audio_data = st_audiorec()
 
-                # Gerar o relatório
-                report = generate_report(transcription_text)
+        if wav_audio_data is not None:
+            # Reproduzir o áudio gravado
+            st.audio(wav_audio_data, format='audio/wav')
 
-                if report:
-                    st.success("Relatório gerado com sucesso!")
-                    st.markdown("### Relatório:")
-                    st.write(report)
+            # Adicionar botão para baixar o áudio
+            st.download_button(
+                label="📥 Baixar Áudio Gravado",
+                data=wav_audio_data,
+                file_name="gravacao.wav",
+                mime="audio/wav",
+                key="download-audio"
+            )
 
-                    # Adicionar botão para baixar o relatório
-                    st.download_button(
-                        label="📥 Baixar Relatório",
-                        data=report,
-                        file_name="relatorio.txt",
-                        mime="text/plain",
-                        key="download-report"
-                    )
+            # Salvar o áudio em um arquivo temporário
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as temp_audio_file:
+                temp_audio_file.write(wav_audio_data)
+                temp_audio_path = temp_audio_file.name
 
-            # Parar o contador de tempo
-            if stop_event and stop_event.is_alive():
-                stop_event.join()
+            # Transcrever automaticamente o áudio gravado
+            st.write("Transcrevendo o áudio gravado...")
+            transcription_text = transcribe_audio(temp_audio_path)
 
+            if transcription_text:
+                st.success("Transcrição concluída!")
+                st.markdown("### Transcrição:")
+                st.write(transcription_text)
+
+                # Remover o arquivo temporário
+                try:
+                    os.remove(temp_audio_path)
+                except PermissionError:
+                    st.warning("Não foi possível remover o arquivo temporário. Tente novamente.")
+
+    # Coluna da direita: relatório
+    with col2:
+        st.header("📝 Relatório")
+        if 'transcription_text' in locals() and transcription_text:
+            st.write("Gerando relatório a partir da transcrição...")
+            report = generate_report(transcription_text)
+
+            if report:
+                st.success("Relatório gerado com sucesso!")
+                st.markdown("### Relatório:")
+                st.write(report)
+
+                # Adicionar botão para baixar o relatório
+                st.download_button(
+                    label="📥 Baixar Relatório",
+                    data=report,
+                    file_name="relatorio.txt",
+                    mime="text/plain",
+                    key="download-report"
+                )
 
 if __name__ == "__main__":
     main()
